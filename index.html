@@ -89,6 +89,9 @@
   .banner.warn { border-color: var(--minus); background: var(--minus-bg); color: var(--minus); }
   .status-tag { font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
   .status-tag.pending { background: var(--pending-bg); color: var(--pending); }
+  .name-status { font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; margin-left: 6px; }
+  .name-status.ok { background: var(--plus-bg); color: var(--plus); }
+  .name-status.pending { background: var(--pending-bg); color: var(--pending); }
 
   #qr-preview { display: flex; justify-content: center; margin: 16px 0; padding: 16px; background: #fff;
     border: 1.4px solid var(--line); border-radius: 8px; }
@@ -229,6 +232,19 @@
       <input id="name-form-url" placeholder="https://docs.google.com/forms/d/e/xxxx/viewform?usp=pp_url&amp;entry.123456={CODE}">
       <button class="btn ghost" id="save-nameform-btn">このURLを保存する</button>
       <p class="hint" id="nameform-save-hint"></p>
+    </div>
+    <div class="card">
+      <h2>氏名登録の自動確認(強く推奨)</h2>
+      <p class="hint" style="margin-top:0;">これを設定すると、住民が氏名フォームを送信した瞬間に、このアプリ側で「氏名登録済み」として自動的に確認されるようになります。設定するまでは、住民は氏名を登録するまでアプリ本体(活動記録など)に進めません。<br>
+      氏名そのものはこのスプレッドシートには一切送られません。「会員番号」と「登録できた」という印だけがやり取りされます。</p>
+      <button class="btn ghost" id="get-callback-setup-btn">設定用コードを発行する</button>
+      <div id="callback-setup-result" style="display:none;margin-top:14px;">
+        <p class="hint" style="margin-top:0;">氏名登録用Googleフォームを編集画面で開き、右上の縦三点メニュー→「スクリプト エディタ」を開いて、次のコードを全部貼り付けてください(既存のコードがあれば置き換えてOK)。</p>
+        <textarea id="callback-setup-code" readonly style="width:100%;min-height:220px;font-family:monospace;font-size:0.82rem;"></textarea>
+        <button type="button" class="btn ghost" id="copy-callback-code-btn" style="margin-top:8px;">コードをコピー</button>
+        <p class="hint">貼り付けたら、左側の時計アイコン(トリガー)を開き、「トリガーを追加」→ 実行する関数「onFormSubmit」、イベントの種類「フォーム送信時」を選んで保存してください。保存時にGoogleアカウントの承認を求められるので、許可してください。</p>
+        <p class="hint" id="callback-setup-hint"></p>
+      </div>
     </div>
     <div class="card">
       <h2>活動用QRコードを作る</h2>
@@ -542,7 +558,7 @@ function renderMemberList() {
   const sorted = [...members].sort((a, b) => Number(a.number) - Number(b.number));
   el.innerHTML = sorted.map(m => `
     <div class="member-row">
-      <span>No.${m.number}</span>
+      <span>No.${m.number} ${m.nameRegistered ? '<span class="name-status ok">氏名登録済み</span>' : '<span class="name-status pending">氏名未登録</span>'}</span>
       <span class="member-points">
         <span class="stamp-num">${pointsFor(m.number)}pt</span>
         <button class="del-btn" data-num="${m.number}">削除</button>
@@ -665,6 +681,58 @@ document.getElementById('save-nameform-btn').addEventListener('click', async () 
     hintEl.textContent = '通信に失敗しました。';
   } finally {
     btn.disabled = false;
+  }
+});
+
+// ---- 氏名登録の自動確認(Googleフォーム連携)用コード発行 ----
+document.getElementById('get-callback-setup-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('get-callback-setup-btn');
+  const resultBox = document.getElementById('callback-setup-result');
+  const hintEl = document.getElementById('callback-setup-hint');
+  btn.disabled = true;
+  hintEl.textContent = '';
+  try {
+    const res = await apiPost({ action: 'getFormCallbackSetup', passcode: adminPassword });
+    if (!res.ok) { hintEl.textContent = '発行に失敗しました(管理者パスワードをご確認ください)。'; return; }
+    const code = [
+      'function onFormSubmit(e) {',
+      "  var itemResponses = e.response.getItemResponses();",
+      "  var number = '';",
+      '  for (var i = 0; i < itemResponses.length; i++) {',
+      "    if (itemResponses[i].getItem().getTitle() === '会員番号') {",
+      '      number = itemResponses[i].getResponse();',
+      '    }',
+      '  }',
+      '  if (!number) return;',
+      '  var payload = {',
+      "    action: 'markNameRegistered',",
+      '    number: number,',
+      "    secret: '" + res.secret + "'",
+      '  };',
+      '  UrlFetchApp.fetch(' + JSON.stringify(res.webAppUrl) + ', {',
+      "    method: 'post',",
+      "    contentType: 'text/plain;charset=utf-8',",
+      '    payload: JSON.stringify(payload),',
+      '    muteHttpExceptions: true',
+      '  });',
+      '}'
+    ].join('\n');
+    document.getElementById('callback-setup-code').value = code;
+    resultBox.style.display = 'block';
+  } catch (e) {
+    hintEl.textContent = '通信に失敗しました。';
+  } finally {
+    btn.disabled = false;
+  }
+});
+document.getElementById('copy-callback-code-btn').addEventListener('click', () => {
+  const ta = document.getElementById('callback-setup-code');
+  ta.select();
+  try {
+    navigator.clipboard.writeText(ta.value);
+    document.getElementById('callback-setup-hint').textContent = 'コピーしました。';
+  } catch (e) {
+    document.execCommand('copy');
   }
 });
 
