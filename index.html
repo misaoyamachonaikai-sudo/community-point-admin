@@ -509,7 +509,14 @@ async function loadPublicConfig() {
 async function loadAdminData() {
   try {
     const admin = await apiPost({ action: 'getAdminData', passcode: adminPassword });
-    if (!admin.ok) { alert('データの読み込みに失敗しました(管理者パスワードをご確認ください)。'); return; }
+    if (!admin.ok) {
+      if (admin.error === 'password') {
+        alert('データの読み込みに失敗しました(管理者パスワードをご確認ください)。');
+      } else {
+        alert('データの読み込みに失敗しました。(' + (admin.error || '') + (admin.message ? ': ' + admin.message : '') + ')');
+      }
+      return;
+    }
     members = admin.members || [];
     log = admin.log || [];
     redemptions = admin.redemptions || [];
