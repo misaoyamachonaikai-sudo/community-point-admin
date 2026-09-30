@@ -310,8 +310,9 @@
       <p class="hint" style="margin-top:0;">住民アプリを使わず、係の人がその場で直接交換処理をしたい場合はこちら。</p>
       <label for="redeem-number">会員番号</label>
       <select id="redeem-number"></select>
-      <label for="redeem-label">交換する品物</label>
-      <input id="redeem-label" placeholder="例:洗剤セット">
+      <label for="redeem-catalog-select">交換する品物</label>
+      <select id="redeem-catalog-select"></select>
+      <input id="redeem-label" placeholder="品物名を入力してください" style="display:none;margin-top:8px;">
       <div class="row2">
         <div><label for="redeem-points">必要ポイント</label><input id="redeem-points" type="number" min="1" value="1"></div>
         <div><label for="redeem-date">日付</label><input id="redeem-date" type="date"></div>
@@ -524,6 +525,7 @@ async function loadPublicConfig() {
       '「作成する」を押すたびに、毎回まったく違うQRコードが発行されます(不正利用防止のため)。発行したQRコードは約' + formatQrValidMinutes(qrValidMinutes) + '有効です。古いQRコードは自動的に使えなくなります。';
     renderTemplates();
     renderCatalogManage();
+    renderRedeemCatalogSelect();
   } catch (e) {
     alert('データの読み込みに失敗しました。(' + (e && e.message ? e.message : '通信エラー') + ')');
   }
@@ -601,6 +603,36 @@ function renderMemberList() {
     });
   });
 }
+
+// 「手動交換」の品物プルダウンを、交換リストに登録済みの品物で表示する
+function renderRedeemCatalogSelect() {
+  const sel = document.getElementById('redeem-catalog-select');
+  if (!sel) return;
+  const opts = catalog.map(c => `<option value="${c.id}">${escapeHtml(c.label)}(${c.points}pt)</option>`).join('');
+  sel.innerHTML = '<option value="">選択してください</option>' + opts + '<option value="__custom__">その他(自由入力)</option>';
+  applyRedeemCatalogSelection_();
+}
+function applyRedeemCatalogSelection_() {
+  const sel = document.getElementById('redeem-catalog-select');
+  const labelInput = document.getElementById('redeem-label');
+  const pointsInput = document.getElementById('redeem-points');
+  if (sel.value === '__custom__') {
+    labelInput.style.display = 'block';
+    labelInput.value = '';
+    labelInput.focus();
+  } else if (!sel.value) {
+    labelInput.style.display = 'none';
+    labelInput.value = '';
+  } else {
+    const item = catalog.find(c => String(c.id) === sel.value);
+    labelInput.style.display = 'none';
+    if (item) {
+      labelInput.value = item.label;
+      pointsInput.value = item.points;
+    }
+  }
+}
+document.getElementById('redeem-catalog-select').addEventListener('change', applyRedeemCatalogSelection_);
 
 function renderNumberSelects() {
   const opts = members.length
@@ -863,8 +895,10 @@ document.getElementById('add-redeem-btn').addEventListener('click', async () => 
   if (balance < points) { notice.textContent = `ポイントが足りません(現在 ${balance}pt / 必要 ${points}pt)`; return; }
   const res = await apiPost({ action: 'addRedeem', number, label, points, date, passcode: adminPassword });
   if (!res.ok) { notice.textContent = res.error === 'insufficient_points' ? 'ポイントが足りません。' : '交換に失敗しました。'; return; }
+  document.getElementById('redeem-catalog-select').value = '';
   document.getElementById('redeem-label').value = '';
   document.getElementById('redeem-points').value = 1;
+  applyRedeemCatalogSelection_();
   await loadAdminData();
 });
 
