@@ -475,29 +475,39 @@ document.getElementById('reset-confirm-btn').addEventListener('click', async () 
 });
 
 // ---- データ読み込み ----
-async function loadData() {
+// 「公開情報(活動テンプレート・交換リスト・URL設定)」と「管理者データ(会員・履歴・申請)」を分けておき、
+// 操作の種類に応じて必要な方だけ読み込み直すことで、毎回すべてを読み込み直す無駄をなくす。
+async function loadPublicConfig() {
   try {
     const pub = await apiGet();
     templates = pub.templates || [];
     catalog = pub.catalog || [];
     document.getElementById('resident-url').value = pub.residentUrl || '';
     document.getElementById('name-form-url').value = pub.nameFormUrl || '';
-
+    renderTemplates();
+    renderCatalogManage();
+  } catch (e) {
+    alert('データの読み込みに失敗しました。');
+  }
+}
+async function loadAdminData() {
+  try {
     const admin = await apiPost({ action: 'getAdminData', passcode: adminPassword });
     if (!admin.ok) { alert('データの読み込みに失敗しました(管理者パスワードをご確認ください)。'); return; }
     members = admin.members || [];
     log = admin.log || [];
     redemptions = admin.redemptions || [];
-
     renderMemberList();
     renderNumberSelects();
     renderLog();
-    renderTemplates();
-    renderCatalogManage();
     renderRequests();
   } catch (e) {
     alert('データの読み込みに失敗しました。');
   }
+}
+async function loadData() {
+  // 初回ログイン時だけ両方必要。並行して読み込むことで、順番に読み込むより速くする。
+  await Promise.all([loadPublicConfig(), loadAdminData()]);
 }
 
 function pointsFor(number) {
@@ -521,7 +531,7 @@ function renderCatalogManage() {
   el.querySelectorAll('.del-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       await apiPost({ action: 'deleteCatalogItem', id: btn.dataset.id, passcode: adminPassword });
-      await loadData();
+      await loadPublicConfig();
     });
   });
 }
@@ -542,7 +552,7 @@ function renderMemberList() {
     btn.addEventListener('click', async () => {
       if (!confirm('No.' + btn.dataset.num + ' を削除しますか?記録は残ります。')) return;
       await apiPost({ action: 'deleteMember', number: btn.dataset.num, passcode: adminPassword });
-      await loadData();
+      await loadAdminData();
     });
   });
 }
@@ -585,7 +595,7 @@ function renderRequests() {
       btn.disabled = true;
       const res = await apiPost({ action: 'completeRedeemRequest', id: btn.dataset.id, passcode: adminPassword });
       if (!res.ok) alert('処理に失敗しました。');
-      await loadData();
+      await loadAdminData();
     });
   });
   el.querySelectorAll('[data-act="reject"]').forEach(btn => {
@@ -593,7 +603,7 @@ function renderRequests() {
       if (!confirm('この申請を却下しますか?')) return;
       const res = await apiPost({ action: 'rejectRedeemRequest', id: btn.dataset.id, passcode: adminPassword });
       if (!res.ok) alert('処理に失敗しました。');
-      await loadData();
+      await loadAdminData();
     });
   });
 }
@@ -618,7 +628,7 @@ function renderTemplates() {
   el.querySelectorAll('[data-act="del"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       await apiPost({ action: 'deleteTemplate', id: btn.dataset.id, passcode: adminPassword });
-      await loadData();
+      await loadPublicConfig();
     });
   });
 }
@@ -681,7 +691,7 @@ async function issueAndShowQr(label, points) {
     document.getElementById('qr-action-buttons').style.display = 'flex';
     if (!templates.some(t => t.label === label && Number(t.points) === Number(points))) {
       await apiPost({ action: 'addTemplate', label, points, passcode: adminPassword });
-      await loadData();
+      await loadPublicConfig();
     }
   } finally {
     if (btn) btn.disabled = false;
@@ -711,7 +721,7 @@ document.getElementById('add-catalog-btn').addEventListener('click', async () =>
   if (!res.ok) { alert('追加に失敗しました。'); return; }
   document.getElementById('catalog-label').value = '';
   document.getElementById('catalog-points').value = 1;
-  await loadData();
+  await loadPublicConfig();
 });
 
 // ---- 手動交換 ----
@@ -730,7 +740,7 @@ document.getElementById('add-redeem-btn').addEventListener('click', async () => 
   if (!res.ok) { notice.textContent = res.error === 'insufficient_points' ? 'ポイントが足りません。' : '交換に失敗しました。'; return; }
   document.getElementById('redeem-label').value = '';
   document.getElementById('redeem-points').value = 1;
-  await loadData();
+  await loadAdminData();
 });
 
 // ---- Tabs ----
