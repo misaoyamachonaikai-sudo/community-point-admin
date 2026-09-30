@@ -502,9 +502,18 @@ document.getElementById('reset-confirm-btn').addEventListener('click', async () 
 // ---- データ読み込み ----
 // 「公開情報(活動テンプレート・交換リスト・URL設定)」と「管理者データ(会員・履歴・申請)」を分けておき、
 // 操作の種類に応じて必要な方だけ読み込み直すことで、毎回すべてを読み込み直す無駄をなくす。
+// 通信が遅い・一瞬だけ失敗する場合に備えて、1回だけ自動で再試行してから諦める。
+async function withRetry_(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    await new Promise(r => setTimeout(r, 800));
+    return await fn();
+  }
+}
 async function loadPublicConfig() {
   try {
-    const pub = await apiGet();
+    const pub = await withRetry_(() => apiGet());
     templates = pub.templates || [];
     catalog = pub.catalog || [];
     document.getElementById('resident-url').value = pub.residentUrl || '';
@@ -516,12 +525,12 @@ async function loadPublicConfig() {
     renderTemplates();
     renderCatalogManage();
   } catch (e) {
-    alert('データの読み込みに失敗しました。');
+    alert('データの読み込みに失敗しました。(' + (e && e.message ? e.message : '通信エラー') + ')');
   }
 }
 async function loadAdminData() {
   try {
-    const admin = await apiPost({ action: 'getAdminData', passcode: adminPassword });
+    const admin = await withRetry_(() => apiPost({ action: 'getAdminData', passcode: adminPassword }));
     if (!admin.ok) {
       if (admin.error === 'password') {
         alert('データの読み込みに失敗しました(管理者パスワードをご確認ください)。');
@@ -538,7 +547,7 @@ async function loadAdminData() {
     renderLog();
     renderRequests();
   } catch (e) {
-    alert('データの読み込みに失敗しました。');
+    alert('データの読み込みに失敗しました。(' + (e && e.message ? e.message : '通信エラー') + ')');
   }
 }
 async function loadData() {
