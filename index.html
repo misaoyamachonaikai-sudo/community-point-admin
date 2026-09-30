@@ -247,13 +247,22 @@
       </div>
     </div>
     <div class="card">
+      <h2>QRコードの有効期限</h2>
+      <p class="hint" style="margin-top:0;">発行したQRコードが使えなくなるまでの時間です。短くするほど、写真に撮られて後から悪用されるリスクを減らせます。</p>
+      <label for="qr-valid-minutes">有効期限(分)</label>
+      <input id="qr-valid-minutes" type="number" min="1" step="1" value="360">
+      <p class="hint" style="margin-top:0;">例:60分=1時間、120分=2時間、360分=6時間</p>
+      <button class="btn ghost" id="save-qr-valid-minutes-btn">この時間を保存する</button>
+      <p class="hint" id="qr-valid-minutes-hint"></p>
+    </div>
+    <div class="card">
       <h2>活動用QRコードを作る</h2>
       <label for="qr-label">活動内容</label>
       <input id="qr-label" placeholder="例:清掃活動">
       <label for="qr-points">付与ポイント</label>
       <input id="qr-points" type="number" min="1" value="1">
       <button class="btn" id="make-qr-btn">QRコードを作成する</button>
-      <p class="hint">「作成する」を押すたびに、毎回まったく違うQRコードが発行されます(不正利用防止のため)。発行したQRコードは約6時間有効です。古いQRコードは自動的に使えなくなります。</p>
+      <p class="hint" id="qr-valid-minutes-info">「作成する」を押すたびに、毎回まったく違うQRコードが発行されます(不正利用防止のため)。発行したQRコードは約360分有効です。古いQRコードは自動的に使えなくなります。</p>
       <div id="print-area" style="display:none;">
         <p class="qr-label" id="qr-shown-label"></p>
         <p class="qr-pts" id="qr-shown-points"></p>
@@ -500,6 +509,10 @@ async function loadPublicConfig() {
     catalog = pub.catalog || [];
     document.getElementById('resident-url').value = pub.residentUrl || '';
     document.getElementById('name-form-url').value = pub.nameFormUrl || '';
+    const qrValidMinutes = pub.qrValidMinutes || 360;
+    document.getElementById('qr-valid-minutes').value = qrValidMinutes;
+    document.getElementById('qr-valid-minutes-info').textContent =
+      '「作成する」を押すたびに、毎回まったく違うQRコードが発行されます(不正利用防止のため)。発行したQRコードは約' + formatQrValidMinutes(qrValidMinutes) + '有効です。古いQRコードは自動的に使えなくなります。';
     renderTemplates();
     renderCatalogManage();
   } catch (e) {
@@ -684,6 +697,34 @@ document.getElementById('save-nameform-btn').addEventListener('click', async () 
   try {
     const res = await apiPost({ action: 'setNameFormUrl', url, passcode: adminPassword });
     hintEl.textContent = res.ok ? '保存しました。' : '保存に失敗しました。';
+  } catch (e) {
+    hintEl.textContent = '通信に失敗しました。';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ---- QRコードの有効期限 ----
+function formatQrValidMinutes(minutes) {
+  minutes = Number(minutes);
+  if (minutes >= 60 && minutes % 60 === 0) return (minutes / 60) + '時間';
+  return minutes + '分';
+}
+document.getElementById('save-qr-valid-minutes-btn').addEventListener('click', async () => {
+  const minutes = Number(document.getElementById('qr-valid-minutes').value);
+  const hintEl = document.getElementById('qr-valid-minutes-hint');
+  if (!minutes || minutes <= 0) { hintEl.textContent = '1以上の数字を入力してください。'; return; }
+  const btn = document.getElementById('save-qr-valid-minutes-btn');
+  btn.disabled = true;
+  try {
+    const res = await apiPost({ action: 'setQrValidMinutes', minutes, passcode: adminPassword });
+    if (res.ok) {
+      hintEl.textContent = '保存しました。';
+      document.getElementById('qr-valid-minutes-info').textContent =
+        '「作成する」を押すたびに、毎回まったく違うQRコードが発行されます(不正利用防止のため)。発行したQRコードは約' + formatQrValidMinutes(minutes) + '有効です。古いQRコードは自動的に使えなくなります。';
+    } else {
+      hintEl.textContent = '保存に失敗しました。';
+    }
   } catch (e) {
     hintEl.textContent = '通信に失敗しました。';
   } finally {
